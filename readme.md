@@ -291,4 +291,4 @@ server_ui/
 
 ## License
 
-MIT
+Apache 2.0
