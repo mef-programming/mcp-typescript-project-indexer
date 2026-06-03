@@ -1,0 +1,36 @@
+{
+  "name": "mcp-typescript-project-indexer",
+  "version": "0.1.0",
+  "description": "Deterministic TypeScript/JavaScript source-range indexer for MCP-based AI code navigation.",
+  "main": "dist/mcp_server.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "build-index": "node dist/scripts/build_project_index.js",
+    "build-file": "node dist/scripts/build_file_index.js",
+    "build-module-map": "node dist/scripts/build_module_map.js",
+    "start": "node dist/mcp_server.js",
+    "start:http": "node dist/http_server.js",
+    "verify": "npm run typecheck"
+  },
+  "author": "Mike Walter",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "typescript": "^5.4.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.14.8"
+  },
+  "keywords": [
+    "mcp",
+    "typescript-indexer",
+    "code-navigation",
+    "ai",
+    "source-range"
+  ],
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true
+  }
+}
