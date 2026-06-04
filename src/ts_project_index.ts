@@ -298,11 +298,23 @@ export async function updateProjectIndex(
   const updatedIndexes: FileIndex[] = [];
 
   for (const absolutePath of candidatePaths) {
-    if (!fs.existsSync(absolutePath)) continue;
-
     const relativePath = toRelativePath(absolutePath, projectRoot);
-    const currentHash = fileContentHash(absolutePath);
     const knownEntry = state.files[relativePath];
+    if (!fs.existsSync(absolutePath)) {
+      if (knownEntry) {
+        writer.deleteFile(knownEntry.fileId);
+        const jsonPath = fileIndexPath(indexRoot, knownEntry.fileId);
+        if (fs.existsSync(jsonPath)) {
+          fs.unlinkSync(jsonPath);
+        }
+        delete state.files[relativePath];
+      }
+      done++;
+      onProgress?.(done, total, relativePath);
+      continue;
+    }
+
+    const currentHash = fileContentHash(absolutePath);
 
     // Skip if unchanged
     if (knownEntry && knownEntry.contentHash === currentHash) {

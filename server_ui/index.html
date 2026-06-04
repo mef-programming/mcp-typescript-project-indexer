@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TypeScript Project Indexer</title>
+    <title>Project Indexer</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
       <header class="hero">
         <div>
           <p class="eyebrow">Managed MCP Server</p>
-          <h1>TypeScript Project Indexer</h1>
+          <h1 id="serverTitle">Project Indexer</h1>
         </div>
         <div class="status-pill" id="statusPill">offline</div>
       </header>
@@ -22,7 +22,18 @@
         <article><span>Imports</span><strong id="importsValue">-</strong></article>
         <article><span>Lines</span><strong id="linesValue">-</strong></article>
         <article><span>State</span><strong id="stateValue">-</strong></article>
+        <article><span>Watcher</span><strong id="watcherValue">-</strong></article>
+        <article><span>Updates</span><strong id="updatesValue">-</strong></article>
         <article><span>Command</span><strong id="commandValue">-</strong></article>
+      </section>
+
+      <section class="process-stats" aria-label="Server process stats">
+        <article class="process-badge" data-process-key="memoryRssMiB"><span>RAM</span><strong id="memoryValue">-</strong></article>
+        <article class="process-badge" data-process-key="heapUsedMiB"><span>Heap</span><strong id="heapValue">-</strong></article>
+        <article class="process-badge" data-process-key="cpuCores"><span>CPU</span><strong id="cpuValue">-</strong></article>
+        <article class="process-badge" data-process-key="cpuTimeSeconds"><span>CPU time</span><strong id="cpuTimeValue">-</strong></article>
+        <article class="process-badge" data-process-key="uptimeSeconds"><span>Uptime</span><strong id="uptimeValue">-</strong></article>
+        <article class="process-badge" data-process-key="threadCount"><span>Threads</span><strong id="threadsValue">-</strong></article>
       </section>
 
       <section class="panel">

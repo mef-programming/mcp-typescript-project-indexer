@@ -74,7 +74,19 @@ node dist/http_server.js ^
   --index-root <project-root>\.mcp-ts-project-indexer ^
   --http-host 127.0.0.1 ^
   --http-port 8766 ^
-  --management-token <token>
+  --management-token <token> ^
+  --watch-index
+```
+
+`--watch-index` starts a lightweight polling watcher. After source changes
+settle, the server runs an incremental update, reloads its in-memory index
+cache, and increments the Management UI `Updates` counter.
+
+Optional watcher tuning:
+
+```powershell
+--watch-poll-interval-ms 5000
+--watch-debounce-ms 1000
 ```
 
 ### 5. MCP client configuration

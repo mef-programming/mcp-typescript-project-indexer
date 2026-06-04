@@ -27,6 +27,7 @@ import {
 } from "./mcp_tools";
 import { buildProjectIndex } from "./ts_project_index";
 import { buildModuleMap } from "./ts_module_scan";
+import { createWatcher, type Watcher } from "./ts_watcher";
 
 // ---------------------------------------------------------------------------
 // Server state
@@ -54,6 +55,17 @@ type ServerState = {
   sseClients: Set<http.ServerResponse>;
   activeCommand: string | null;
   managementToken: string | null;
+  processStatsSample: ProcessStatsSample | null;
+  watcher: Watcher | null;
+  watcherRunning: boolean;
+  watcherLastUpdate: string | null;
+  watcherLastError: string | null;
+  watcherUpdateCount: number;
+};
+
+type ProcessStatsSample = {
+  wallMs: number;
+  cpuMicros: number;
 };
 
 function nowIso(): string {
@@ -120,7 +132,11 @@ function serveStaticFile(res: http.ServerResponse, filePath: string, contentType
     return;
   }
   const content = fs.readFileSync(filePath, "utf-8");
-  res.writeHead(200, { "Content-Type": contentType, "Access-Control-Allow-Origin": "*" });
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store",
+  });
   res.end(content);
 }
 
@@ -131,6 +147,46 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     req.on("error", reject);
   });
+}
+
+function processStatus(state: ServerState): Record<string, unknown> {
+  const memory = process.memoryUsage();
+  const cpu = process.cpuUsage();
+  const wallMs = Date.now();
+  const cpuMicros = cpu.user + cpu.system;
+  const previous = state.processStatsSample;
+  let cpuCores = 0;
+  let cpuPercent = 0;
+
+  if (previous) {
+    const wallDeltaMs = Math.max(1, wallMs - previous.wallMs);
+    const cpuDeltaMicros = Math.max(0, cpuMicros - previous.cpuMicros);
+    cpuCores = cpuDeltaMicros / (wallDeltaMs * 1000);
+    cpuPercent = os.cpus().length > 0 ? (cpuCores / os.cpus().length) * 100 : 0;
+  }
+
+  state.processStatsSample = { wallMs, cpuMicros };
+  const activeResourceCount = typeof process.getActiveResourcesInfo === "function"
+    ? process.getActiveResourcesInfo().length
+    : null;
+
+  return {
+    pid: process.pid,
+    uptimeSeconds: process.uptime(),
+    cpuTimeSeconds: cpuMicros / 1_000_000,
+    cpuCores,
+    cpuPercent,
+    memory: {
+      rssBytes: memory.rss,
+      heapUsedBytes: memory.heapUsed,
+      heapTotalBytes: memory.heapTotal,
+      externalBytes: memory.external,
+      arrayBuffersBytes: memory.arrayBuffers,
+    },
+    activeResourceCount,
+    threadCount: activeResourceCount,
+    logicalCpuCount: os.cpus().length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -370,9 +426,16 @@ async function handleRequest(
     const stats = state.index.reader.getStats();
     sendJson(res, 200, {
       server: { name: SERVER_NAME, version: SERVER_VERSION, startedAt: state.startedAt, uptime: process.uptime() },
+      process: processStatus(state),
       index: { ...stats, stateFingerprint: state.index.stateFingerprint, generatedAt: state.index.manifest.generatedAt },
       project: { root: state.projectRoot, indexRoot: state.indexRoot },
       activeCommand: state.activeCommand,
+      watcher: {
+        running: state.watcherRunning,
+        lastUpdate: state.watcherLastUpdate,
+        lastError: state.watcherLastError,
+        updateCount: state.watcherUpdateCount,
+      },
     });
     return;
   }
@@ -421,9 +484,16 @@ async function handleRequest(
       const stats = state.index.reader.getStats();
       sendJson(res, 200, {
         server: { name: SERVER_NAME, version: SERVER_VERSION, pid: process.pid, ramMb: Math.round(process.memoryUsage().rss / 1024 / 1024), startedAt: state.startedAt },
+        process: processStatus(state),
         index: { ...stats, stateFingerprint: state.index.stateFingerprint, totalLineCount: state.index.manifest.totalLineCount, totalTokenCount: state.index.manifest.totalTokenCount },
         project: { root: state.projectRoot, indexRoot: state.indexRoot },
         activeCommand: state.activeCommand,
+        watcher: {
+          running: state.watcherRunning,
+          lastUpdate: state.watcherLastUpdate,
+          lastError: state.watcherLastError,
+          updateCount: state.watcherUpdateCount,
+        },
         logCount: state.logs.length,
       });
       return;
@@ -481,6 +551,9 @@ export type HttpServerOptions = {
   host?: string;
   port?: number;
   managementToken?: string;
+  watchIndex?: boolean;
+  watchPollIntervalMs?: number;
+  watchDebounceMs?: number;
 };
 
 export function startHttpServer(options: HttpServerOptions): http.Server {
@@ -490,6 +563,9 @@ export function startHttpServer(options: HttpServerOptions): http.Server {
     host = "127.0.0.1",
     port = 8766,
     managementToken = null,
+    watchIndex = false,
+    watchPollIntervalMs = 5000,
+    watchDebounceMs = 1000,
   } = options;
 
   const index = loadIndex(projectRoot, indexRoot);
@@ -505,10 +581,47 @@ export function startHttpServer(options: HttpServerOptions): http.Server {
     sseClients: new Set(),
     activeCommand: null,
     managementToken,
+    processStatsSample: null,
+    watcher: null,
+    watcherRunning: false,
+    watcherLastUpdate: null,
+    watcherLastError: null,
+    watcherUpdateCount: 0,
   };
 
   addLog(state, "info", `Server starting`, { projectRoot, indexRoot, host, port });
   addLog(state, "info", `Index loaded: ${stats.fileCount} files, ${stats.symbolCount} symbols`);
+
+  if (watchIndex) {
+    state.watcher = createWatcher({
+      projectRoot,
+      indexRoot,
+      pollIntervalMs: watchPollIntervalMs,
+      debounceMs: watchDebounceMs,
+      canUpdate: () => !state.activeCommand,
+      onUpdateStart: (changedCount) => {
+        state.activeCommand = "watch_update";
+        addLog(state, "info", `Watcher update started: ${changedCount} changed file(s)`);
+      },
+      onUpdate: (changedCount, durationMs) => {
+        state.index.reader.close();
+        state.index = loadIndex(state.projectRoot, state.indexRoot);
+        state.activeCommand = null;
+        state.watcherLastUpdate = nowIso();
+        state.watcherLastError = null;
+        state.watcherUpdateCount++;
+        addLog(state, "info", `Watcher update complete: ${changedCount} file(s) in ${durationMs}ms`);
+      },
+      onError: (error) => {
+        state.activeCommand = null;
+        state.watcherLastError = error.message;
+        addLog(state, "error", `Watcher update failed: ${error.message}`);
+      },
+    });
+    state.watcher.start();
+    state.watcherRunning = true;
+    addLog(state, "info", "Watcher started", { pollIntervalMs: watchPollIntervalMs, debounceMs: watchDebounceMs });
+  }
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -535,6 +648,15 @@ export function startHttpServer(options: HttpServerOptions): http.Server {
     );
   });
 
+  server.on("close", () => {
+    if (state.watcher) {
+      state.watcher.stop();
+      state.watcherRunning = false;
+      addLog(state, "info", "Watcher stopped");
+    }
+    state.index.reader.close();
+  });
+
   return server;
 }
 
@@ -549,6 +671,9 @@ if (require.main === module) {
   let host = "127.0.0.1";
   let port = 8766;
   let managementToken: string | null = null;
+  let watchIndex = false;
+  let watchPollIntervalMs = 5000;
+  let watchDebounceMs = 1000;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--project-root" && args[i + 1]) projectRoot = path.resolve(args[++i]!);
@@ -556,6 +681,10 @@ if (require.main === module) {
     else if (args[i] === "--http-host" && args[i + 1]) host = args[++i]!;
     else if (args[i] === "--http-port" && args[i + 1]) port = parseInt(args[++i]!, 10);
     else if (args[i] === "--management-token" && args[i + 1]) managementToken = args[++i]!;
+    else if (args[i] === "--watch-index") watchIndex = true;
+    else if (args[i] === "--no-watch-index") watchIndex = false;
+    else if (args[i] === "--watch-poll-interval-ms" && args[i + 1]) watchPollIntervalMs = parseInt(args[++i]!, 10);
+    else if (args[i] === "--watch-debounce-ms" && args[i + 1]) watchDebounceMs = parseInt(args[++i]!, 10);
   }
 
   if (!indexRoot) indexRoot = path.join(projectRoot, ".mcp-ts-project-indexer");
@@ -568,5 +697,14 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  startHttpServer({ projectRoot, indexRoot, host, port, managementToken: managementToken ?? undefined });
+  startHttpServer({
+    projectRoot,
+    indexRoot,
+    host,
+    port,
+    managementToken: managementToken ?? undefined,
+    watchIndex,
+    watchPollIntervalMs,
+    watchDebounceMs,
+  });
 }
