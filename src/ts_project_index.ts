@@ -73,6 +73,16 @@ function deleteFileIndex(indexRoot: string, fileId: string): void {
   }
 }
 
+function deleteSqliteIndex(indexRoot: string): void {
+  for (const name of ["index.sqlite", "index.sqlite-wal", "index.sqlite-shm", "index.sqlite-journal"]) {
+    try {
+      fs.rmSync(path.join(indexRoot, name), { force: true });
+    } catch {
+      // A fresh full build recreates the SQLite lookup index.
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // State hash
 // ---------------------------------------------------------------------------
@@ -135,6 +145,7 @@ export async function buildProjectIndex(
   const filesDir = path.join(indexRoot, "files");
   fs.rmSync(filesDir, { recursive: true, force: true });
   fs.mkdirSync(filesDir, { recursive: true });
+  deleteSqliteIndex(indexRoot);
 
   // Discover source files
   const absolutePaths = discoverSourceFiles(
@@ -156,6 +167,7 @@ export async function buildProjectIndex(
 
   // Open SQLite writer
   const writer = new SqliteIndexWriter(indexRoot);
+  writer.clear();
 
   // Process files — simple sequential for now, parallel in next iteration
   for (const absolutePath of absolutePaths) {

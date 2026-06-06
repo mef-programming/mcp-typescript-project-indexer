@@ -102,6 +102,14 @@ export class SqliteIndexWriter {
     }
   }
 
+  clear(): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM symbols").run();
+      this.db.prepare("DELETE FROM imports").run();
+      this.db.prepare("DELETE FROM files").run();
+    })();
+  }
+
   writeFileIndex(index: FileIndex): void {
     const tx = this.db.transaction(() => {
       // Remove existing data for this file
