@@ -17,6 +17,7 @@ import {
   SCHEMA_NAME,
 } from "./ts_index_model";
 import { buildFileIndex } from "./ts_file_index";
+import { buildOrientationIndex, writeOrientationIndex } from "./ts_orientation_index";
 import { SqliteIndexWriter } from "./ts_index_sqlite";
 import {
   DEFAULT_EXCLUDE_DIRS,
@@ -50,6 +51,7 @@ export type BuildProjectIndexResult = {
   symbolCount: number;
   importCount: number;
   exportCount: number;
+  orientationNodeCount: number;
   diagnosticsCount: number;
   totalLineCount: number;
   totalTokenCount: number;
@@ -203,8 +205,12 @@ export async function buildProjectIndex(
 
   writer.close();
 
+  const orientation = buildOrientationIndex(projectRoot);
+  writeOrientationIndex(indexRoot, orientation);
+
   // Compute state hash
-  const stateHash = computeStateHash(allIndexes);
+  const orientationHash = sha256Hex(orientation.nodes.map((node) => node.contentHash).sort().join("\n"));
+  const stateHash = `sha256:${sha256Hex(`${computeStateHash(allIndexes)}\norientation:${orientationHash}`).slice(0, 32)}`;
 
   // Write manifest
   const manifest: ProjectManifest = {
@@ -218,6 +224,7 @@ export async function buildProjectIndex(
     symbolCount,
     importCount,
     exportCount,
+    orientationNodeCount: orientation.nodes.length,
     diagnosticsCount,
     totalLineCount,
     totalTokenCount,
@@ -251,6 +258,7 @@ export async function buildProjectIndex(
     symbolCount,
     importCount,
     exportCount,
+    orientationNodeCount: orientation.nodes.length,
     diagnosticsCount,
     totalLineCount,
     totalTokenCount,
@@ -390,6 +398,9 @@ export async function updateProjectIndex(
 
   writer.close();
 
+  const orientation = buildOrientationIndex(projectRoot);
+  writeOrientationIndex(indexRoot, orientation);
+
   // Save updated state
   state.updatedAt = nowIso();
   saveUpdateState(indexRoot, state);
@@ -401,6 +412,9 @@ export async function updateProjectIndex(
   try {
     manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as ProjectManifest;
     manifest.generatedAt = nowIso();
+    manifest.orientationNodeCount = orientation.nodes.length;
+    const orientationHash = sha256Hex(orientation.nodes.map((node) => node.contentHash).sort().join("\n"));
+    manifest.stateHash = `sha256:${sha256Hex(`${manifest.stateHash}\norientation:${orientationHash}`).slice(0, 32)}`;
   } catch {
     // No existing manifest — create minimal one
     manifest = {
@@ -414,10 +428,11 @@ export async function updateProjectIndex(
       symbolCount,
       importCount,
       exportCount,
+      orientationNodeCount: orientation.nodes.length,
       diagnosticsCount,
       totalLineCount,
       totalTokenCount,
-      stateHash: sha256Hex(nowIso()),
+      stateHash: `sha256:${sha256Hex(nowIso()).slice(0, 32)}`,
     };
   }
 
@@ -429,6 +444,7 @@ export async function updateProjectIndex(
     symbolCount,
     importCount,
     exportCount,
+    orientationNodeCount: orientation.nodes.length,
     diagnosticsCount,
     totalLineCount,
     totalTokenCount,

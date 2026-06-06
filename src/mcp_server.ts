@@ -19,7 +19,7 @@ import {
   type LoadedIndex,
   loadIndex,
   dispatchTool,
-  TOOL_DEFINITIONS,
+  availableToolDefinitions,
 } from "./mcp_tools";
 
 // ---------------------------------------------------------------------------
@@ -102,8 +102,9 @@ function handleInitialize(
 function handleToolsList(
   id: number | string | null,
   _params: unknown,
+  index: LoadedIndex,
 ): JsonRpcResponse {
-  return makeResult(id, { tools: TOOL_DEFINITIONS });
+  return makeResult(id, { tools: availableToolDefinitions(index) });
 }
 
 function handleToolsCall(
@@ -196,7 +197,7 @@ function main(): void {
         return;
 
       case "tools/list":
-        response = handleToolsList(request.id, request.params);
+        response = handleToolsList(request.id, request.params, index);
         break;
 
       case "tools/call":

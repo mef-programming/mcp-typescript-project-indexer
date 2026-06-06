@@ -160,6 +160,7 @@ The AI reads source ranges and reasons from the original code.
   manifest.json
   index.sqlite
   module_map.json
+  orientation.json
   update_state.json
   files/
     f_<pathHash>.json
@@ -173,6 +174,10 @@ The AI reads source ranges and reasons from the original code.
 |---|---|
 | `get_project_summary` | Project overview: file count, symbols, imports, state hash |
 | `get_index_state` | State fingerprint for cache validation |
+| `get_project_orientation` | Compact README/AGENTS project orientation |
+| `list_orientation_nodes` | List indexed README/AGENTS orientation nodes |
+| `get_orientation_node` | Read one structured orientation node |
+| `search_orientation` | Search README/AGENTS orientation metadata |
 | `find_symbol` | Find symbols by name or qualified name |
 | `read_symbol` | Read exact source range for a symbol |
 | `read_range` | Read arbitrary source lines from a file |
@@ -185,6 +190,30 @@ The AI reads source ranges and reasons from the original code.
 | `get_nearest_symbol_for_line` | Map a line number to the nearest symbol |
 
 All tools return metadata or exact source ranges. They do not analyze code.
+
+Orientation metadata is optional and comes from `README.md`, `readme.md`,
+`AGENTS.md`, and Markdown files with `topology` in the filename. Folder READMEs
+use `kind: "folder_orientation"`; topology documents use `kind: "topology"`.
+It helps an AI choose the right subsystem before reading source. It is
+navigation evidence only, not implementation behavior evidence.
+
+Folder README structured fields are extracted only from the binding
+project-indexer orientation headings:
+
+```text
+Purpose:
+Use this folder when the question is about:
+Do not use this folder first when the question is about:
+## Map
+## Start Here
+## Boundaries
+```
+
+Legacy aliases such as `Responsibilities`, `Non-responsibilities`, `Use when`,
+or `Current layout` remain ordinary Markdown text only.
+
+Orientation tools are exposed only when orientation/topology evidence exists in
+the loaded index. If no nodes were indexed, `tools/list` omits those tools.
 
 ---
 

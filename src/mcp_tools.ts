@@ -17,6 +17,7 @@ import type { McpTool, McpToolResult } from "./mcp_types";
 import { SqliteIndexReader } from "./ts_index_sqlite";
 import { readLeadingComment, readSourceRange } from "./ts_file_index";
 import type { FileIndex, ProjectManifest } from "./ts_index_model";
+import { loadOrientationIndex, type OrientationNode } from "./ts_orientation_index";
 import { safeParseJson, stableJson } from "./ts_index_utils";
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,7 @@ export function handleGetProjectSummary(
     symbolCount: stats.symbolCount,
     importCount: stats.importCount,
     exportCount: index.manifest.exportCount,
+    orientationNodeCount: index.manifest.orientationNodeCount ?? 0,
     diagnosticsCount: index.manifest.diagnosticsCount,
     totalLineCount: index.manifest.totalLineCount,
     totalTokenCount: index.manifest.totalTokenCount,
@@ -117,7 +119,112 @@ export function handleGetIndexState(
     fileCount: stats.fileCount,
     symbolCount: stats.symbolCount,
     importCount: stats.importCount,
+    orientationNodeCount: index.manifest.orientationNodeCount ?? 0,
   });
+}
+
+function compactOrientationNode(node: OrientationNode): Record<string, unknown> {
+  return {
+    orientationId: node.orientationId,
+    kind: node.kind,
+    folder: node.folder,
+    file: node.file,
+    title: node.title,
+    purpose: node.purpose,
+    useWhen: node.useWhen,
+    doNotUseFirstWhen: node.doNotUseFirstWhen,
+    startHere: node.startHere,
+    childFolders: node.childFolders,
+  };
+}
+
+export function handleGetProjectOrientation(
+  args: Record<string, unknown>,
+  index: LoadedIndex,
+): McpToolResult {
+  const orientation = loadOrientationIndex(index.indexRoot);
+  const maxNodes = typeof args.maxNodes === "number" ? Math.min(Math.max(args.maxNodes, 1), 50) : 12;
+  const selected: OrientationNode[] = [];
+  const root = orientation.nodes.find((node) => node.folder === ".");
+  if (root) selected.push(root);
+  for (const node of orientation.nodes) {
+    if (selected.length >= maxNodes) break;
+    if (node.folder !== "." && !node.folder.includes("/")) selected.push(node);
+  }
+  const nodes = selected.length > 0 ? selected : orientation.nodes.slice(0, maxNodes);
+  return okResult(withMeta({
+    schema: "ts.project_orientation.summary.v1",
+    totalNodes: orientation.nodes.length,
+    returnedNodes: nodes.length,
+    nodes: nodes.map(compactOrientationNode),
+  }, index));
+}
+
+export function handleListOrientationNodes(
+  args: Record<string, unknown>,
+  index: LoadedIndex,
+): McpToolResult {
+  const orientation = loadOrientationIndex(index.indexRoot);
+  const limit = typeof args.limit === "number" ? Math.min(Math.max(args.limit, 1), 500) : 200;
+  const nodes = orientation.nodes.slice(0, limit);
+  return okResult(withMeta({
+    schema: "ts.project_orientation.list.v1",
+    totalNodes: orientation.nodes.length,
+    returnedNodes: nodes.length,
+    nodes: nodes.map(compactOrientationNode),
+  }, index));
+}
+
+export function handleGetOrientationNode(
+  args: Record<string, unknown>,
+  index: LoadedIndex,
+): McpToolResult {
+  const queryPath = typeof args.path === "string" ? args.path.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") : "";
+  if (!queryPath) return errorResult("path is required");
+  const orientation = loadOrientationIndex(index.indexRoot);
+  const node = orientation.nodes.find((candidate) =>
+    candidate.orientationId === queryPath ||
+    candidate.folder.replace(/^\/+|\/+$/g, "") === queryPath ||
+    candidate.file.replace(/^\/+|\/+$/g, "") === queryPath
+  );
+  if (!node) return errorResult(`Orientation node not found: ${queryPath}`);
+  return okResult(withMeta(node, index));
+}
+
+export function handleSearchOrientation(
+  args: Record<string, unknown>,
+  index: LoadedIndex,
+): McpToolResult {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) return errorResult("query is required");
+  const limit = typeof args.limit === "number" ? Math.min(Math.max(args.limit, 1), 100) : 20;
+  const needle = query.toLowerCase();
+  const orientation = loadOrientationIndex(index.indexRoot);
+  const matches: Array<Record<string, unknown>> = [];
+  for (const node of orientation.nodes) {
+    const haystack = [
+      node.title,
+      node.folder,
+      node.file,
+      node.purpose,
+      node.boundaries,
+      node.useWhen.join(" "),
+      node.doNotUseFirstWhen.join(" "),
+      node.startHere.join(" "),
+      node.map.map((entry) => `${entry.path} ${entry.description}`).join(" "),
+      node.headings.join(" "),
+    ].join(" ").toLowerCase();
+    if (!haystack.includes(needle)) continue;
+    matches.push({ ...compactOrientationNode(node), matchKind: "text_substring" });
+    if (matches.length >= limit) break;
+  }
+  return okResult(withMeta({
+    schema: "ts.project_orientation.search.v1",
+    query,
+    totalNodes: orientation.nodes.length,
+    returnedMatches: matches.length,
+    matches,
+  }, index));
 }
 
 // ---------------------------------------------------------------------------
@@ -660,6 +767,53 @@ export const TOOL_DEFINITIONS: McpTool[] = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
+    name: "get_project_orientation",
+    description: "Return compact README/AGENTS orientation nodes for project navigation. Metadata only; does not read implementation source.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        maxNodes: { type: "number", description: "Maximum nodes to return. Default 12, max 50." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "list_orientation_nodes",
+    description: "List indexed README/AGENTS orientation nodes as compact routing metadata.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Maximum nodes to return. Default 200, max 500." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_orientation_node",
+    description: "Return one structured README/AGENTS orientation node by folder, file, or orientationId.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Folder path, README/AGENTS file path, or orientationId." },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "search_orientation",
+    description: "Search README/AGENTS orientation metadata before source navigation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Text to search in title, purpose, use-when, boundaries, headings, and map fields." },
+        limit: { type: "number", description: "Maximum matches. Default 20, max 100." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "find_symbol",
     description: "Find symbols by name or qualified name. Returns routing metadata: symbolId, kind, qualifiedName, relativePath, startLine, endLine. Use symbolId with read_symbol to get source. Does not return source by itself.",
     inputSchema: {
@@ -811,6 +965,22 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
 ];
 
+export const ORIENTATION_TOOL_NAMES = new Set([
+  "get_project_orientation",
+  "list_orientation_nodes",
+  "get_orientation_node",
+  "search_orientation",
+]);
+
+export function hasOrientationEvidence(index: LoadedIndex): boolean {
+  return (index.manifest.orientationNodeCount ?? 0) > 0;
+}
+
+export function availableToolDefinitions(index: LoadedIndex): McpTool[] {
+  if (hasOrientationEvidence(index)) return TOOL_DEFINITIONS;
+  return TOOL_DEFINITIONS.filter((tool) => !ORIENTATION_TOOL_NAMES.has(tool.name));
+}
+
 // ---------------------------------------------------------------------------
 // Tool dispatcher
 // ---------------------------------------------------------------------------
@@ -820,6 +990,10 @@ export type ToolHandler = (args: Record<string, unknown>, index: LoadedIndex) =>
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   get_project_summary: handleGetProjectSummary,
   get_index_state: handleGetIndexState,
+  get_project_orientation: handleGetProjectOrientation,
+  list_orientation_nodes: handleListOrientationNodes,
+  get_orientation_node: handleGetOrientationNode,
+  search_orientation: handleSearchOrientation,
   find_symbol: handleFindSymbol,
   read_symbol: handleReadSymbol,
   read_range: handleReadRange,
@@ -837,6 +1011,9 @@ export function dispatchTool(
   args: Record<string, unknown>,
   index: LoadedIndex,
 ): McpToolResult {
+  if (ORIENTATION_TOOL_NAMES.has(toolName) && !hasOrientationEvidence(index)) {
+    return errorResult("Orientation evidence is not available for this index.");
+  }
   const handler = TOOL_HANDLERS[toolName];
   if (!handler) {
     return errorResult(`Unknown tool: ${toolName}`);

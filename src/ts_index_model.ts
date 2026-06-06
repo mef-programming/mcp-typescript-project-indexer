@@ -206,6 +206,7 @@ export type ProjectManifest = {
   symbolCount: number;
   importCount: number;
   exportCount: number;
+  orientationNodeCount?: number;
   diagnosticsCount: number;
   totalLineCount: number;
   totalTokenCount: number;

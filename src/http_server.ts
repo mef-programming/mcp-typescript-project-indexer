@@ -23,7 +23,7 @@ import {
   type LoadedIndex,
   loadIndex,
   dispatchTool,
-  TOOL_DEFINITIONS,
+  availableToolDefinitions,
 } from "./mcp_tools";
 import { buildProjectIndex } from "./ts_project_index";
 import { buildModuleMap } from "./ts_module_scan";
@@ -204,7 +204,7 @@ function getPluginUiManifest(state: ServerState): Record<string, unknown> {
       height: "auto",
     },
     capabilities: ["status", "logs", "metrics", "commands", "tool-test"],
-    tools: TOOL_DEFINITIONS.map((t) => t.name),
+    tools: availableToolDefinitions(state.index).map((tool) => tool.name),
     project: {
       root: state.projectRoot,
       indexRoot: state.indexRoot,
@@ -237,7 +237,7 @@ function handleMcpRequest(body: string, state: ServerState): JsonRpcResponse {
       };
 
     case "tools/list":
-      return { jsonrpc: "2.0", id: request.id, result: { tools: TOOL_DEFINITIONS } };
+      return { jsonrpc: "2.0", id: request.id, result: { tools: availableToolDefinitions(state.index) } };
 
     case "tools/call": {
       const params = request.params as Record<string, unknown> | undefined;
@@ -427,7 +427,7 @@ async function handleRequest(
     sendJson(res, 200, {
       server: { name: SERVER_NAME, version: SERVER_VERSION, startedAt: state.startedAt, uptime: process.uptime() },
       process: processStatus(state),
-      index: { ...stats, stateFingerprint: state.index.stateFingerprint, generatedAt: state.index.manifest.generatedAt },
+      index: { ...stats, orientationNodeCount: state.index.manifest.orientationNodeCount ?? 0, stateFingerprint: state.index.stateFingerprint, generatedAt: state.index.manifest.generatedAt },
       project: { root: state.projectRoot, indexRoot: state.indexRoot },
       activeCommand: state.activeCommand,
       watcher: {
@@ -485,7 +485,7 @@ async function handleRequest(
       sendJson(res, 200, {
         server: { name: SERVER_NAME, version: SERVER_VERSION, pid: process.pid, ramMb: Math.round(process.memoryUsage().rss / 1024 / 1024), startedAt: state.startedAt },
         process: processStatus(state),
-        index: { ...stats, stateFingerprint: state.index.stateFingerprint, totalLineCount: state.index.manifest.totalLineCount, totalTokenCount: state.index.manifest.totalTokenCount },
+        index: { ...stats, orientationNodeCount: state.index.manifest.orientationNodeCount ?? 0, stateFingerprint: state.index.stateFingerprint, totalLineCount: state.index.manifest.totalLineCount, totalTokenCount: state.index.manifest.totalTokenCount },
         project: { root: state.projectRoot, indexRoot: state.indexRoot },
         activeCommand: state.activeCommand,
         watcher: {
