@@ -65,6 +65,14 @@ function fileIndexPath(indexRoot: string, fileId: string): string {
   return path.join(indexRoot, "files", `${fileId}.json`);
 }
 
+function deleteFileIndex(indexRoot: string, fileId: string): void {
+  try {
+    fs.unlinkSync(fileIndexPath(indexRoot, fileId));
+  } catch {
+    // State/SQLite can outlive a missing per-file JSON cache entry.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // State hash
 // ---------------------------------------------------------------------------
@@ -124,7 +132,9 @@ export async function buildProjectIndex(
 
   // Prepare output directories
   fs.mkdirSync(indexRoot, { recursive: true });
-  fs.mkdirSync(path.join(indexRoot, "files"), { recursive: true });
+  const filesDir = path.join(indexRoot, "files");
+  fs.rmSync(filesDir, { recursive: true, force: true });
+  fs.mkdirSync(filesDir, { recursive: true });
 
   // Discover source files
   const absolutePaths = discoverSourceFiles(
@@ -286,6 +296,19 @@ export async function updateProjectIndex(
   }
 
   const writer = new SqliteIndexWriter(indexRoot);
+
+  if (!changedFiles?.length && !knownFilesOnly) {
+    const currentRelativePaths = new Set(
+      candidatePaths.map((absolutePath) => toRelativePath(absolutePath, projectRoot)),
+    );
+    for (const [relativePath, entry] of Object.entries(state.files)) {
+      if (currentRelativePaths.has(relativePath)) continue;
+      writer.deleteFile(entry.fileId);
+      deleteFileIndex(indexRoot, entry.fileId);
+      delete state.files[relativePath];
+    }
+  }
+
   const errors: Array<{ file: string; message: string }> = [];
   let symbolCount = 0;
   let importCount = 0;
@@ -303,10 +326,7 @@ export async function updateProjectIndex(
     if (!fs.existsSync(absolutePath)) {
       if (knownEntry) {
         writer.deleteFile(knownEntry.fileId);
-        const jsonPath = fileIndexPath(indexRoot, knownEntry.fileId);
-        if (fs.existsSync(jsonPath)) {
-          fs.unlinkSync(jsonPath);
-        }
+        deleteFileIndex(indexRoot, knownEntry.fileId);
         delete state.files[relativePath];
       }
       done++;
