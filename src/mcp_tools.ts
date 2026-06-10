@@ -758,17 +758,17 @@ export function handleGetNearestSymbolForLine(
 export const TOOL_DEFINITIONS: McpTool[] = [
   {
     name: "get_project_summary",
-    description: "Return a compact summary of the indexed project: file count, symbol count, import count, line count, token count, and state hash. Use this for a quick project overview. Does not return source.",
+    description: "Return a compact summary of the indexed project. Returns JSON counts for files, symbols, imports, exports, diagnostics, lines/tokens, state hash, indexer version, and orientation node count. Metadata only; does not return source.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
     name: "get_index_state",
-    description: "Return a compact state fingerprint for the currently loaded project index. Use this to check if the index has changed between requests.",
+    description: "Return a compact state fingerprint for the currently loaded project index. Returns JSON with stateFingerprint/stateHash, generatedAt, file/symbol/import counts, and orientation node count. Use for staleness checks; metadata only.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
     name: "get_project_orientation",
-    description: "Return compact README/AGENTS orientation nodes for project navigation. Metadata only; does not read implementation source.",
+    description: "Return compact README/AGENTS orientation nodes for project navigation. Returns JSON with schema, totalNodes, returnedNodes, and nodes[] containing orientationId, kind, folder, file, title, purpose, useWhen, doNotUseFirstWhen, startHere, and childFolders. Metadata only; not source behavior evidence.",
     inputSchema: {
       type: "object",
       properties: {
@@ -779,7 +779,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "list_orientation_nodes",
-    description: "List indexed README/AGENTS orientation nodes as compact routing metadata.",
+    description: "List indexed README/AGENTS orientation nodes as compact routing metadata. Returns JSON with totalNodes, returnedNodes, and nodes[]. If no orientation evidence is available, the tool is not exposed. Metadata only; not source behavior evidence.",
     inputSchema: {
       type: "object",
       properties: {
@@ -790,7 +790,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "get_orientation_node",
-    description: "Return one structured README/AGENTS orientation node by folder, file, or orientationId.",
+    description: "Return one structured README/AGENTS orientation node by folder, file, or orientationId. Returns the full node with headings, map, parent/child data, and content hash when available. If the node is not found, returns an error.",
     inputSchema: {
       type: "object",
       properties: {
@@ -802,7 +802,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "search_orientation",
-    description: "Search README/AGENTS orientation metadata before source navigation.",
+    description: "Search README/AGENTS orientation metadata before source navigation. Returns JSON with query, totalNodes, returnedMatches, and matches[] containing compact orientation nodes plus matchKind. Matches are routing hints only; expand selected nodes with get_orientation_node before source navigation.",
     inputSchema: {
       type: "object",
       properties: {
@@ -815,7 +815,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "find_symbol",
-    description: "Find symbols by name or qualified name. Returns routing metadata: symbolId, kind, qualifiedName, relativePath, startLine, endLine. Use symbolId with read_symbol to get source. Does not return source by itself.",
+    description: "Find symbols by name or qualified name. Returns JSON with results[] and count; each result has symbolId, kind, name/qualifiedName, relativePath, startLine, endLine, and optional signature/container fields. If nothing matches, results is an empty array. Metadata only; use symbolId with read_symbol to get source.",
     inputSchema: {
       type: "object",
       properties: {
@@ -833,7 +833,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "read_symbol",
-    description: "Read the exact source range for a symbol by symbolId. Returns the original source lines with line numbers. Use find_symbol first to get the symbolId.",
+    description: "Read the exact source range for a symbol by symbolId. Returns JSON with symbol metadata, relativePath, startLine, endLine, and source lines with line numbers. If symbolId is unknown or the file is missing, returns an error. This is source evidence for the returned range only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -847,7 +847,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "read_range",
-    description: "Read an exact source range from a file by line numbers. Use for reading code around a known location. Returns original source lines with line numbers.",
+    description: "Read an exact source range from a file by line numbers or around a center line. Returns JSON with file, startLine, endLine, and source lines with line numbers. If the file/range is invalid, returns an error. Use for compact source evidence around known locations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -864,7 +864,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "list_file_symbols",
-    description: "List all indexed symbols in a file. Returns routing metadata only. Use to get an overview before selecting a symbol to read.",
+    description: "List indexed symbols in a file. Returns JSON with file, fileId, symbolCount, and symbols[] containing ids, names, kinds, containers/signatures when requested, and line ranges. If the file is unknown, returns an error. Metadata only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -880,7 +880,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "get_file_structure",
-    description: "Return a file overview: metadata, symbol count, and optionally an ordered symbol outline and import list. Use for orientation before reading source ranges.",
+    description: "Return a file overview: metadata, symbol count, optional ordered outline, and optional import list. Returns routing metadata only; source behavior still requires read_symbol or read_range. If the file is unknown, returns an error.",
     inputSchema: {
       type: "object",
       properties: {
@@ -896,7 +896,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "list_file_imports",
-    description: "List all import statements in a file. Returns module specifiers, resolved paths, and import kinds. Use to understand file dependencies.",
+    description: "List import statements in a file. Returns JSON with file, fileId, importCount, and imports[] containing module specifier, resolved path, kind, type-only/external flags, and source line. If none exist, imports is an empty array. Metadata only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -910,7 +910,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "list_file_imported_by",
-    description: "List all files that import a given file. Use to find consumers/dependents of a module. Returns routing metadata only.",
+    description: "List files that import a given file. Returns JSON with file, fileId, importedByCount, and importedBy[] entries with importer file and source line. If no importers are known, importedBy is an empty array. Metadata only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -922,7 +922,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "search_source",
-    description: "Search for raw source text matches across the project or in a specific file. Returns lexical matches only — not semantic references. Always describe results as source text matches, not references.",
+    description: "Search for raw source text matches across the project or in a specific file. Returns JSON with query, matchCount, truncated, and matches[] containing relativePath, line, column, text, and optional context. If no lexical matches are found, matches is an empty array. This is raw text search only, not semantic reference resolution.",
     inputSchema: {
       type: "object",
       properties: {
@@ -940,7 +940,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "get_symbol_leading_comment",
-    description: "Return the leading JSDoc or block comment for a symbol. Use for purpose/why questions before reading implementation source.",
+    description: "Return the leading JSDoc/block comment for a symbol. Returns hasComment, commentRange, and comment text when present; if no leading comment exists, returns hasComment:false and comment:null. Comment text is source evidence for stated intent, not runtime behavior proof.",
     inputSchema: {
       type: "object",
       properties: {
@@ -952,7 +952,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: "get_nearest_symbol_for_line",
-    description: "Return the indexed symbol at or nearest to a given line number in a file. Use when a diagnostic, error, or line number needs to be mapped to a symbol.",
+    description: "Return the indexed symbol at or nearest to a given line number in a file. Returns JSON with file, line, and symbol metadata including containsLine. If no symbol is nearby, symbol is null. Metadata only; read the symbol/range before behavior claims.",
     inputSchema: {
       type: "object",
       properties: {
