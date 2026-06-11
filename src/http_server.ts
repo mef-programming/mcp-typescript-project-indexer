@@ -28,6 +28,11 @@ import {
 import { buildProjectIndex } from "./ts_project_index";
 import { buildModuleMap } from "./ts_module_scan";
 import { createWatcher, type Watcher } from "./ts_watcher";
+import {
+  getProjectPrompt,
+  hasProjectPrompt,
+  listProjectPrompts,
+} from "./project_prompt";
 
 // ---------------------------------------------------------------------------
 // Server state
@@ -225,19 +230,39 @@ function handleMcpRequest(body: string, state: ServerState): JsonRpcResponse {
   }
 
   switch (request.method) {
-    case "initialize":
+    case "initialize": {
+      const capabilities: Record<string, unknown> = { tools: { listChanged: false } };
+      if (hasProjectPrompt(state.projectRoot)) capabilities.prompts = { listChanged: false };
       return {
         jsonrpc: "2.0",
         id: request.id,
         result: {
           protocolVersion: PROTOCOL_VERSION,
-          capabilities: { tools: { listChanged: false } },
+          capabilities,
           serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         },
       };
+    }
 
     case "tools/list":
       return { jsonrpc: "2.0", id: request.id, result: { tools: availableToolDefinitions(state.index) } };
+
+    case "prompts/list":
+      return { jsonrpc: "2.0", id: request.id, result: listProjectPrompts(state.projectRoot) };
+
+    case "prompts/get": {
+      const params = request.params as Record<string, unknown> | undefined;
+      const name = typeof params?.name === "string" ? params.name : "";
+      if (!name) {
+        return { jsonrpc: "2.0", id: request.id, error: { code: MCP_ERROR_CODES.INVALID_PARAMS, message: "prompt name required" } };
+      }
+      try {
+        return { jsonrpc: "2.0", id: request.id, result: getProjectPrompt(state.projectRoot, name) };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { jsonrpc: "2.0", id: request.id, error: { code: MCP_ERROR_CODES.INVALID_PARAMS, message } };
+      }
+    }
 
     case "tools/call": {
       const params = request.params as Record<string, unknown> | undefined;

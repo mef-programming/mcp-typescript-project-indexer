@@ -21,6 +21,11 @@ import {
   dispatchTool,
   availableToolDefinitions,
 } from "./mcp_tools";
+import {
+  getProjectPrompt,
+  hasProjectPrompt,
+  listProjectPrompts,
+} from "./project_prompt";
 
 // ---------------------------------------------------------------------------
 // Server info
@@ -86,12 +91,17 @@ function makeResult(id: number | string | null, result: unknown): JsonRpcRespons
 function handleInitialize(
   id: number | string | null,
   _params: unknown,
+  projectRoot: string,
 ): JsonRpcResponse {
+  const capabilities: Record<string, unknown> = {
+    tools: { listChanged: false },
+  };
+  if (hasProjectPrompt(projectRoot)) {
+    capabilities.prompts = { listChanged: false };
+  }
   return makeResult(id, {
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: {
-      tools: { listChanged: false },
-    },
+    capabilities,
     serverInfo: {
       name: SERVER_NAME,
       version: SERVER_VERSION,
@@ -105,6 +115,32 @@ function handleToolsList(
   index: LoadedIndex,
 ): JsonRpcResponse {
   return makeResult(id, { tools: availableToolDefinitions(index) });
+}
+
+function handlePromptsList(id: number | string | null, projectRoot: string): JsonRpcResponse {
+  return makeResult(id, listProjectPrompts(projectRoot));
+}
+
+function handlePromptsGet(
+  id: number | string | null,
+  params: unknown,
+  projectRoot: string,
+): JsonRpcResponse {
+  if (!params || typeof params !== "object") {
+    return makeError(id, MCP_ERROR_CODES.INVALID_PARAMS, "params required");
+  }
+  const name = typeof (params as Record<string, unknown>).name === "string"
+    ? String((params as Record<string, unknown>).name)
+    : "";
+  if (!name) {
+    return makeError(id, MCP_ERROR_CODES.INVALID_PARAMS, "prompt name required");
+  }
+  try {
+    return makeResult(id, getProjectPrompt(projectRoot, name));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return makeError(id, MCP_ERROR_CODES.INVALID_PARAMS, message);
+  }
 }
 
 function handleToolsCall(
@@ -189,7 +225,7 @@ function main(): void {
 
     switch (request.method) {
       case "initialize":
-        response = handleInitialize(request.id, request.params);
+        response = handleInitialize(request.id, request.params, projectRoot);
         break;
 
       case "notifications/initialized":
@@ -198,6 +234,14 @@ function main(): void {
 
       case "tools/list":
         response = handleToolsList(request.id, request.params, index);
+        break;
+
+      case "prompts/list":
+        response = handlePromptsList(request.id, projectRoot);
+        break;
+
+      case "prompts/get":
+        response = handlePromptsGet(request.id, request.params, projectRoot);
         break;
 
       case "tools/call":

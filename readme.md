@@ -12,6 +12,9 @@ Find code. Read code. Do not guess code.
 The indexer maps TypeScript/JavaScript symbols, files, imports, and exports to
 exact source ranges so an AI can read only the code it needs.
 
+It can also expose optional project-local MCP prompt guidance from
+`indexer-prompt.md` in the indexed project root.
+
 ---
 
 ## 30-Second Overview
@@ -198,6 +201,26 @@ The AI reads source ranges and reasons from the original code.
 
 All tools return metadata or exact source ranges. They do not analyze code.
 
+### Project prompt
+
+Place this optional file in the indexed project root:
+
+```text
+<project-root>/indexer-prompt.md
+```
+
+When present, the server advertises MCP `prompts` capability and supports:
+
+```text
+prompts/list
+prompts/get {"name": "project-indexer-prompt"}
+```
+
+Use this for project-specific agent guidance, routing rules, vocabulary, or
+review constraints. It is prompt guidance only, not source behavior evidence.
+Source claims still require `read_symbol`, `read_range`, or another primary
+evidence tool.
+
 Orientation metadata is optional and comes from `README.md`, `readme.md`,
 `AGENTS.md`, and Markdown files with `topology` in the filename. Folder READMEs
 use `kind: "folder_orientation"`; topology documents use `kind: "topology"`.
@@ -278,6 +301,8 @@ The module map contains:
 Management endpoints require `x-api-key` or `Authorization: Bearer` when a
 token is configured.
 
+MCP prompt methods are served through the same `/mcp` endpoint as tools.
+
 ---
 
 ## Management Commands
@@ -323,6 +348,7 @@ src/
   ts_index_utils.ts        Utilities, file discovery, hashing
   ts_structural_scan.ts    TypeScript Compiler API scanner
   ts_orientation_index.ts   README/AGENTS/topology orientation metadata
+  project_prompt.ts        Optional indexer-prompt.md MCP prompt support
   ts_file_index.ts         Per-file indexer
   ts_project_index.ts      Full project build + incremental update
   ts_index_sqlite.ts       SQLite routing index

@@ -8,6 +8,7 @@ Use this folder when the question is about:
 - project index build and incremental update behavior
 - SQLite lookup index writing and reading
 - MCP tool definitions, dispatch, and result shaping
+- optional project-local MCP prompt support from `indexer-prompt.md`
 - HTTP management API, log events, commands, and embedded UI serving
 - README/AGENTS/topology orientation metadata extraction
 - polling watcher behavior for server-side index updates
@@ -26,6 +27,7 @@ http_server.ts          HTTP MCP transport, management API, commands, watcher wi
 mcp_server.ts           stdio MCP server
 mcp_tools.ts            MCP tool schemas, handlers, dynamic orientation exposure
 mcp_types.ts            JSON-RPC and MCP result types
+project_prompt.ts      optional indexer-prompt.md MCP prompt support
 ts_change_tracking.ts   git/worktree change and hunk routing helpers
 ts_file_index.ts        per-file source range and leading-comment helpers
 ts_index_model.ts       manifest, file, symbol, import/export data shapes
@@ -41,6 +43,7 @@ ts_watcher.ts           polling watcher and incremental update trigger
 ## Start Here
 
 - MCP tool surface and handlers: `mcp_tools.ts`
+- Project prompt support: `project_prompt.ts`
 - HTTP transport and management API: `http_server.ts`
 - Full/incremental index pipeline: `ts_project_index.ts`
 - TypeScript AST scanner: `ts_structural_scan.ts`
