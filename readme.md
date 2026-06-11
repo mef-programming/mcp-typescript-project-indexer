@@ -50,6 +50,13 @@ npm install
 npm run build
 ```
 
+Useful checks while developing the indexer itself:
+
+```powershell
+npm run typecheck
+npm run verify
+```
+
 ### 2. Build an index for your TypeScript project
 
 ```powershell
@@ -215,6 +222,11 @@ or `Current layout` remain ordinary Markdown text only.
 Orientation tools are exposed only when orientation/topology evidence exists in
 the loaded index. If no nodes were indexed, `tools/list` omits those tools.
 
+This standalone server currently exposes the compact orientation tool set above.
+The broader multi-language monorepo may expose additional orientation-health or
+graph-navigation tools; do not assume those exist here unless `tools/list`
+returns them.
+
 ---
 
 ## Incremental Update
@@ -256,7 +268,8 @@ The module map contains:
 | `POST /mcp` | MCP JSON-RPC (tool calls) |
 | `GET /health` | Health check |
 | `GET /status` | Server status and index stats |
-| `GET /server/ui/index.html` | Management UI |
+| `GET /server/ui/` | Management UI |
+| `GET /server/ui/manifest` | Management UI manifest (auth) |
 | `GET /server/management/status` | Management status (auth) |
 | `POST /server/management/command` | Build/Reload commands (auth) |
 | `GET /server/management/log` | Log events (auth) |
@@ -309,11 +322,13 @@ src/
   ts_index_model.ts        Data model
   ts_index_utils.ts        Utilities, file discovery, hashing
   ts_structural_scan.ts    TypeScript Compiler API scanner
+  ts_orientation_index.ts   README/AGENTS/topology orientation metadata
   ts_file_index.ts         Per-file indexer
   ts_project_index.ts      Full project build + incremental update
   ts_index_sqlite.ts       SQLite routing index
   ts_module_scan.ts        Import/export module map
   ts_change_tracking.ts    Git-based change tracking
+  ts_watcher.ts            Polling watcher for incremental server updates
   mcp_types.ts             MCP protocol types
   mcp_tools.ts             Tool definitions and handlers
   mcp_server.ts            MCP server (stdio)
