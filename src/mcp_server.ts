@@ -21,6 +21,7 @@ import {
   dispatchTool,
   availableToolDefinitions,
 } from "./mcp_tools";
+import { updateProjectIndex } from "./ts_project_index";
 import {
   getProjectPrompt,
   hasProjectPrompt,
@@ -39,16 +40,19 @@ const PROTOCOL_VERSION = "2024-11-05";
 // CLI args
 // ---------------------------------------------------------------------------
 
-function parseArgs(): { projectRoot: string; indexRoot: string } {
+function parseArgs(): { projectRoot: string; indexRoot: string; startUpdate: boolean } {
   const args = process.argv.slice(2);
   let projectRoot: string | null = null;
   let indexRoot: string | null = null;
+  let startUpdate = true;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--project-root" && args[i + 1]) {
       projectRoot = path.resolve(args[++i]!);
     } else if (args[i] === "--index-root" && args[i + 1]) {
       indexRoot = path.resolve(args[++i]!);
+    } else if (args[i] === "--no-start-update") {
+      startUpdate = false;
     }
   }
 
@@ -60,7 +64,7 @@ function parseArgs(): { projectRoot: string; indexRoot: string } {
     indexRoot = path.join(projectRoot, ".mcp-ts-project-indexer");
   }
 
-  return { projectRoot, indexRoot };
+  return { projectRoot, indexRoot, startUpdate };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,8 +174,8 @@ function handleToolsCall(
 // Main server loop
 // ---------------------------------------------------------------------------
 
-function main(): void {
-  const { projectRoot, indexRoot } = parseArgs();
+async function main(): Promise<void> {
+  const { projectRoot, indexRoot, startUpdate } = parseArgs();
 
   // Validate index exists
   const manifestPath = path.join(indexRoot, "manifest.json");
@@ -181,6 +185,21 @@ function main(): void {
       `Run: node dist/scripts/build_project_index.js --root "${projectRoot}" --output-root "${indexRoot}"\n`,
     );
     process.exit(1);
+  }
+
+  if (startUpdate) {
+    process.stderr.write(`Checking index updates for ${projectRoot}...\n`);
+    try {
+      const result = await updateProjectIndex({ projectRoot, indexRoot });
+      process.stderr.write(
+        `Startup update complete: ${result.fileCount} changed file(s) in ${result.durationMs}ms\n`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Startup update failed, loading existing index: ${message}\n`);
+    }
+  } else {
+    process.stderr.write(`Startup index update disabled by --no-start-update.\n`);
   }
 
   // Load index
@@ -269,4 +288,8 @@ function main(): void {
   });
 }
 
-main();
+main().catch((err) => {
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`Fatal error: ${message}\n`);
+  process.exit(1);
+});

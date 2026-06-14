@@ -6,6 +6,7 @@ Use this folder when the question is about:
 
 - TypeScript/JavaScript structural scanning
 - project index build and incremental update behavior
+- automatic startup index refresh behavior
 - SQLite lookup index writing and reading
 - MCP tool definitions, dispatch, and result shaping
 - optional project-local MCP prompt support from `indexer-prompt.md`
@@ -45,6 +46,7 @@ ts_watcher.ts           polling watcher and incremental update trigger
 - MCP tool surface and handlers: `mcp_tools.ts`
 - Project prompt support: `project_prompt.ts`
 - HTTP transport and management API: `http_server.ts`
+- Stdio startup/update behavior: `mcp_server.ts`
 - Full/incremental index pipeline: `ts_project_index.ts`
 - TypeScript AST scanner: `ts_structural_scan.ts`
 - SQLite lookup storage: `ts_index_sqlite.ts`

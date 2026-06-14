@@ -92,6 +92,15 @@ node dist/http_server.js ^
 settle, the server runs an incremental update, reloads its in-memory index
 cache, and increments the Management UI `Updates` counter.
 
+When an index already exists, the server also runs one incremental update at
+startup before it begins serving MCP requests. This catches changed, added,
+removed, or renamed files from a previous session. To skip the startup check,
+pass:
+
+```powershell
+--no-start-update
+```
+
 Optional watcher tuning:
 
 ```powershell

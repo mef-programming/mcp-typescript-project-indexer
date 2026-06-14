@@ -25,7 +25,7 @@ import {
   dispatchTool,
   availableToolDefinitions,
 } from "./mcp_tools";
-import { buildProjectIndex } from "./ts_project_index";
+import { buildProjectIndex, updateProjectIndex } from "./ts_project_index";
 import { buildModuleMap } from "./ts_module_scan";
 import { createWatcher, type Watcher } from "./ts_watcher";
 import {
@@ -699,6 +699,7 @@ if (require.main === module) {
   let watchIndex = false;
   let watchPollIntervalMs = 5000;
   let watchDebounceMs = 1000;
+  let startUpdate = true;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--project-root" && args[i + 1]) projectRoot = path.resolve(args[++i]!);
@@ -708,6 +709,7 @@ if (require.main === module) {
     else if (args[i] === "--management-token" && args[i + 1]) managementToken = args[++i]!;
     else if (args[i] === "--watch-index") watchIndex = true;
     else if (args[i] === "--no-watch-index") watchIndex = false;
+    else if (args[i] === "--no-start-update") startUpdate = false;
     else if (args[i] === "--watch-poll-interval-ms" && args[i + 1]) watchPollIntervalMs = parseInt(args[++i]!, 10);
     else if (args[i] === "--watch-debounce-ms" && args[i + 1]) watchDebounceMs = parseInt(args[++i]!, 10);
   }
@@ -722,7 +724,7 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  startHttpServer({
+  const start = () => startHttpServer({
     projectRoot,
     indexRoot,
     host,
@@ -732,4 +734,23 @@ if (require.main === module) {
     watchPollIntervalMs,
     watchDebounceMs,
   });
+
+  if (startUpdate) {
+    process.stderr.write(`Checking index updates for ${projectRoot}...\n`);
+    updateProjectIndex({ projectRoot, indexRoot })
+      .then((result) => {
+        process.stderr.write(
+          `Startup update complete: ${result.fileCount} changed file(s) in ${result.durationMs}ms\n`,
+        );
+        start();
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`Startup update failed, starting existing index: ${message}\n`);
+        start();
+      });
+  } else {
+    process.stderr.write(`Startup index update disabled by --no-start-update.\n`);
+    start();
+  }
 }
